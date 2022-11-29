@@ -21,7 +21,8 @@ def load_data(file_path: str) -> np.array:
 
     data = [float(number) for number in data]
     data.reverse()  # or  data = data[::-1]
-    return np.array([data])
+    data = np.array([data])
+    return data.reshape(data.size, 1)
 
 
 def transform_data(dataset: np.array) -> np.array:
@@ -35,16 +36,21 @@ def transform_data(dataset: np.array) -> np.array:
     return dataset - np.mean(dataset)
 
 
-def plot_data(data: np.array, N=None) -> None:
+def plot_data(data: np.array, N=None, polynomial_function = None) -> None:
     """
     Plot of the data.
 
     Input: One dimensional Numpy array, N-> number of data points to plot.
 
     """
+    x_axis = np.arange(1, N + 1, 1)
+    # polynomial_function = -0.000001 * x_axis**4 + 0.00001 * x_axis**3 - 0.0008* x_axis**2 + 0.02*x_axis
     if N:
-        plt.scatter(np.arange(0, N, 1), data[0][:N])
+        plt.scatter(np.arange(1, N + 1, 1), data[:N])
+        if polynomial_function is not None:
+            plt.plot(np.arange(1, N + 1, 1), polynomial_function)
         plt.show()
     else:
-        plt.scatter(np.arange(0, 30, 1), data[0][:30])
+        plt.scatter(np.arange(1, 30 + 1, 1), data[:30])
         plt.show()
+
