@@ -130,6 +130,21 @@ def test_implementation(a=None):
 
 
 if __name__ == "__main__":
+    M0 = M(data[:25], 5)
+    v0 = v(data[:25], 5)
+    
+    from scipy.linalg import inv,cholesky
+    print(cholesky(M0))
+    a0=-inv(M0)@v0#solve(M0, -v0.T)
+    
+    print(a0, f(a0,data[:25]), f_(a0,data[:25]))
+    
+    best_polynomial = lambda t: polynomial(t, a0)
+    
+    minf = f(a0,data[:25])
+    
+    print(f"f acquires its minimum value at {a0=}, where f(a_0)={minf}")
+    exit()
     while 1:
         test_implementation()
         input()
