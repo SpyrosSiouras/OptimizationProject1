@@ -122,8 +122,8 @@ f"""
 
     t = create_polynomial_matrix(days=25, nth_power=4)
     plot_data(given_data, N, Pm(t,reverse_x_opt))
-    
-    
+
+
 def random_point(dimensions):
     from random import randint, random, choice
 
@@ -136,4 +136,25 @@ def random_point(dimensions):
 
 
 if __name__ == "__main__":
-    plot_data(given_data, N, [minimum_polynomial(t) for t in given_data[:N]])
+    plot_against(x_opt=minimizer, started_at=minimizer)
+
+
+
+from optimization.mathchinery import D2Function
+from optimization.mathchinery import Function
+from optimization.mathchinery import Vector
+
+@Function
+def D0_objective_function(*vector):
+    return obj_func(vector)
+
+@Function
+def D1_objective_function(*vector):
+    return gradient_obj_func(vector)
+
+@Function
+def D2_objective_function(*vector):
+    return hessian_obj_func(vector)
+
+objective_function = D2Function(D0_objective_function, D1_objective_function, D2_objective_function)
+objective_function._dimensions = 5
