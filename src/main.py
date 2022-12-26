@@ -1,7 +1,7 @@
 from dataset import load_data, transform_data, plot_data
 import numpy as np
 
-FILE_PATH = 'Government_Securities_GR.txt'
+FILE_PATH = '../resources/Government_Securities_GR.txt'
 
 def create_polynomial_matrix(days: int, nth_power: int) -> np.array:
     
