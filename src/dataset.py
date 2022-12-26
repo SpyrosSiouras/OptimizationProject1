@@ -44,7 +44,6 @@ def plot_data(data: np.array, N=None, polynomial_function = None) -> None:
 
     """
     x_axis = np.arange(1, N + 1, 1)
-    # polynomial_function = -0.000001 * x_axis**4 + 0.00001 * x_axis**3 - 0.0008* x_axis**2 + 0.02*x_axis
     if N:
         plt.scatter(np.arange(1, N + 1, 1), data[:N])
         if polynomial_function is not None:
