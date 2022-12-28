@@ -1,25 +1,23 @@
-"""The mathematical machinery required"""
+"""Some mathematical machinery required for optimization"""
 
 from __future__ import annotations
 
-from math import acos
-import numpy as np
-from numpy import array, ndarray, float64
-from numpy.linalg import inv
-from typing import Any, Callable, Optional, Tuple, List
-from numpy.typing import ArrayLike
-from numbers import Number
-from collections.abc import Iterable, Collection
-from functools import lru_cache, cache, reduce, wraps, cached_property
-from collections import deque
-from inspect import signature
-from copy import deepcopy
-from abc import ABC, abstractmethod
 
-try:
-    from typing import Unpack
-except ImportError:
-    pass
+from numpy import array, ndarray, float64
+from numpy.linalg import inv, cholesky, LinAlgError
+from numpy.typing import ArrayLike
+
+from typing import Any, Callable, Optional, Tuple
+
+from numbers import Number
+from math import acos
+
+from functools import lru_cache, wraps
+
+from inspect import signature
+
+from copy import deepcopy
+
 
 
 
@@ -75,8 +73,10 @@ class Vector:
         except IndexError:
             raise IndexError( "tried to access %s[%d], when it has %d coordinates" % (self, index, len(self)) ) from None
 
-    def __array__(self):
+    def __array__(self) -> ndarray:
         return self._coords
+
+    __array_priority__ = 1
 
     def _validate_vector_input(vector_operation: Callable[[Vector, Vector], Any]):
         @wraps(vector_operation)
@@ -88,7 +88,7 @@ class Vector:
             except ValueError:
                 raise ValueError(
                         f"operands have different shapes: {self.shape}, {other.shape}"
-                    ) from None
+                ) from None
         return operator
 
     def __rmul__(self, num: Number) -> Vector:
@@ -120,6 +120,14 @@ class Vector:
     def __mul__(self: Vector, other: Vector) -> float:
         """Returns the inner product of the vectors"""
         return (self._coords @ other._coords.T)[0][0]
+
+    @_validate_vector_input
+    def __matmul__(self: Vector, other: ndarray) -> Vector | float:
+        return Vector( self._coords @ other )
+
+    @_validate_vector_input
+    def __rmatmul__(self: Vector, other: ndarray) -> ndarray:
+        return other @ self._coords
 
     def squared(self: Vector) -> float:
         """Returns the inner product of the vector with itself"""
@@ -195,7 +203,7 @@ class Function:
     @property
     def __name__(self) -> str:
         return self._name
-    
+
     @property
     def __doc__(self) -> Optional[str]:
         return self._doc
@@ -210,13 +218,23 @@ class Function:
         return self._dimensions
 
     @domain_dimensions.setter
-    def domain_dimensions(self, value) -> None:
-       self._dimensions = value
+    def domain_dimensions(self, number: int) -> None:
+       self._dimensions = number
 
     @property
     def evaluations(self) -> int:
-        """Returns the number of unique function evaluations performed thus far"""
+        """Returns the number of unique function evaluations performed thus far scaled by a number that represents the cost of each call"""
         return self._evaluations
+
+    @property
+    def unweighted_evaluations(self) -> int:
+        """Returns the number of unique function evaluations performed thus far"""
+        return self.evaluations // self._cost
+
+    def _reset(self) -> None:
+        """Erases the cache and resets the current evaluations to 0"""
+        self._evaluations = 0
+        self._compute.cache_clear()
 
     @lru_cache(maxsize=_CACHE_SIZE)
     def _compute(self, args: Tuple[float]) -> Any:
@@ -231,17 +249,17 @@ class Function:
     def _cache_info(self):
         return self._compute.cache_info()
 
-    def __call__(self, vector: Vector) -> Any:
+    def __call__(self, point: Vector) -> Any:
         """
-        Applies the arguments collectively on the function, as in f(v) where v is a container; eg v = (v1, ..., vn)
+        Applies the arguments collectively on the function, as in f(v) where p is a container; eg p = (p1, ..., pn)
 
         If a single number is provided as an argument, it's wrapped in a container automatically.
         """
         try:
-            return self._compute( tuple(vector) )
+            return self._compute( tuple(point) )
         except TypeError as te:
             if "is not iterable" in te.args[0]:
-                return self._compute( (vector,) )
+                return self._compute( (point,) )
             else:
                 raise
 
@@ -277,12 +295,27 @@ class DiffFunction(Function):
                                                             )
 
     @property
-    def evaluations(self) -> int:
+    def total_evaluations(self) -> int:
         """
         Returns the total number of unique function evaluations performed thus far
         That number also includes the evaluations of the gradient.
         """
-        return self._evaluations + self.gradient.evaluations
+        return self.evaluations + self.gradient.evaluations
+
+    @property
+    def total_unweighted_evaluations(self) -> int:
+        """
+        Returns the total number of unique function evaluations performed thus far
+        That number also includes the evaluations of the gradient.
+
+        Each function or gradient call is assumed to cost the same.
+        """
+        return self.unweighted_evaluations + self.gradient.unweighted_evaluations
+
+    def _reset(self) -> None:
+        """Erases the cache and resets the current evaluations to 0"""
+        super()._reset()
+        self.gradient._reset()
 
 
 class Diff2Function(DiffFunction):
@@ -301,7 +334,7 @@ class Diff2Function(DiffFunction):
     derivatives are computed.
     """
 
-    __slots__ = DiffFunction.__slots__ + ("hessian", "inverse_hessian")
+    __slots__ = DiffFunction.__slots__ + ("hessian",)#, "inverse_hessian")
 
     def __init__(self, function: Callable, gradient: Callable, hessian: Callable, name: Optional[str] = None) -> None:
         super().__init__(function, gradient, name=name)
@@ -312,25 +345,46 @@ class Diff2Function(DiffFunction):
                                                                 name=(f"hessian of {name}" if name else None)
                                                             )
 
+        # if self.domain_dimensions > 1:
+        #     def inverse_hessian_as_a_Function(*point: Vector) -> ndarray:
+        #         return inv(self.hessian(point))
+        # else:
+        #     def inverse_hessian_as_a_Function(*point: Vector) -> ndarray:
+        #         return Vector(1/self.hessian(point)[0])
 
-        def inverse_hessian_as_a_Function(*vector: Vector) -> ndarray:
-            return inv(self.hessian(vector))
-
-        self.inverse_hessian: Callable[[Vector], ndarray] = Function(
-                                                                        inverse_hessian_as_a_Function,
-                                                                        name=(f"inverse hessian of {name}" if name else None)
-                                                                    )
-        self.inverse_hessian.domain_dimensions = self.domain_dimensions
+        # self.inverse_hessian: Callable[[Vector], ndarray] = Function(
+        #                                                                 inverse_hessian_as_a_Function,
+        #                                                                 name=(f"inverse hessian of {name}" if name else None)
+        #                                                             )
+        # self.inverse_hessian.domain_dimensions = self.domain_dimensions
 
 
     @property
-    def evaluations(self) -> int:
+    def total_evaluations(self) -> int:
         """
         Returns the total number of unique function evaluations performed thus far
-
         This number also includes the evaluations of the gradient and the hessian.
         """
-        return self._evaluations + self.gradient.evaluations + self.hessian.evaluations
+        return self._evaluations + self.gradient.evaluations + self.hessian.evaluations #+ self.inverse_hessian.evaluations
+
+    @property
+    def total_unweighted_evaluations(self) -> int:
+        """
+        Returns the total number of unique function evaluations performed thus far
+        This number also includes the evaluations of the gradient and the hessian.
+
+        Each function, gradient or hessian call is assumed to cost the same.
+        """
+        return self.unweighted_evaluations + self.gradient.unweighted_evaluations + + self.hessian.unweighted_evaluations
+
+
+    def _reset(self) -> None:
+        """Erases the cache and resets the current evaluations to 0"""
+        super()._reset()
+        self.hessian._reset()
+        # self.inverse_hessian._reset()
+
+
 
 
 
@@ -352,16 +406,6 @@ class FunctionNotTwiceDifferentiableError(BaseException):
 
 
 
-
-
-# def _doc_mappings(a_name):#todo!!
-#     return f"""
-#     A class modeling {a_name}
-
-#     When it's called, it either retrieves the value from a cache or it computes the result anew,
-#     if it wasn't recently computed.
-#     Each one of those fresh computations is recorded as an evaluation of the function.
-#     """
 
 
 
@@ -1208,7 +1252,7 @@ if __name__ == "__main__":
     def D1f(x,y): return 2*Vector(x,y)
 
     @Function
-    def D2f(x,y): return np.array([[2,0],[0,2]])
+    def D2f(x,y): return array([[2,0],[0,2]])
 
     f = Diff2Function(D0f, D1f, D2f)
     

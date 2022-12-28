@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections import namedtuple
 from dataclasses import dataclass
 # from math_machinery import Function, Vector, DFunction, D2Function
-from typing import Self, List
+from typing import Self, List, Optional
 from collections.abc import Iterator
 from copy import deepcopy
 
@@ -35,11 +35,14 @@ minimal_req = """
 class GenericAlgorithm(Iterator):
     """An abstract class for modeling an optimization algorithm"""
 
-    def __init__(self, objective_function: Function) -> None:
+    def __init__(self, objective_function: Function, show_warnings: bool = False) -> None:
+        if not isinstance(objective_function, Function):
+            raise TypeError("the objective function provided must be an instance of Function")
         self.objective_function: Function = deepcopy(objective_function)
         self.budget: int = 0
         self.current: Point = Point( self.domain_dimensions * [0] )
         self.path: List[Point] = []
+        self.show_warnings = show_warnings
 
     @property
     def domain_dimensions(self) -> int:
@@ -49,7 +52,7 @@ class GenericAlgorithm(Iterator):
     def step_length(self) -> float:
         """Computes the length of the current step"""
     @abstractmethod
-    def direction(self) -> Vector:
+    def step_direction(self) -> Vector:
         """Computes the direction of the current step"""
 
     @property
@@ -57,8 +60,8 @@ class GenericAlgorithm(Iterator):
         return self.current
 
     @xk.setter
-    def xk(self, value) -> None:
-        self.current = value
+    def xk(self, point: Vector) -> None:
+        self.current = point
 
     @property
     def xk_prev(self) -> Vector:
@@ -69,7 +72,7 @@ class GenericAlgorithm(Iterator):
 
     @property
     def pk(self) -> Vector:
-        return self.direction()
+        return self.step_direction()
 
     @property
     def ak(self) -> float:
@@ -100,10 +103,20 @@ class GenericAlgorithm(Iterator):
     def evaluations(self) -> int:
         return self.objective_function.evaluations
 
+    @property
+    def unweighted_evaluations(self) -> int:
+        return self.objective_function.unweighted_evaluations
+
     @abstractmethod
     def are_stop_criteria_met(self) -> bool:
         """Check whether the stop criteria have been fulfilled"""
         return self.is_budget_exhausted()
+
+    def resume_run(self, with_additional_budget: int) -> Point:
+        self.budget += with_additional_budget
+        while not self.are_stop_criteria_met():
+            next(self)
+        return self.current
 
     def run(self, from_point: Point, with_budget: int) -> Point:
         # slide 64, optimization theory and methods nonlinear programming
@@ -118,32 +131,81 @@ class GenericAlgorithm(Iterator):
         #Step 4. (Loop) Set x_k+1 = x_k + α_k*d_k, k := k + 1, and loop to Step 1.
 
         self.current = from_point
-        self.path.append( self.current )
-        self.budget = with_budget
+        self.path = [self.current]
+        self.objective_function._reset()
+        return self.resume_run(with_budget)
 
-        while not self.are_stop_criteria_met():
-            next(self)
-        return self.current
+    @property
+    def length_of_last_run(self):
+        return len(self.path)
 
-    def current_state_to_str(self) -> str:
-        return f"The current point is xk={self.xk} with {self.objective_function>__name__}(xk)={self.fk} and a budget of {self.budget} function evaluations left to use."
-    
+    def report_current_state_to_str(self) -> str:
+        return f"""
+    The current point is xk={self.xk} with {self.objective_function.__name__}(xk)={self.fk} and a budget of {self.budget} function evaluations left to use.
+    The current step length is ak={self.ak} and the current step direction is pk={self.pk}.
+                """
+
     def report_warning(self, msg: str) -> None:
-        warn( f"on xk={self.xk} {msg}", RuntimeWarning )
-    
-    
-    
-    
-from mixins import LineSearch, SteepestDescentDirection
+        if self.show_warnings:
+            warn( f"on xk={self.xk} {msg}", RuntimeWarning )
+
+
+
+
+
+from mixins import LineSearch, SteepestDescentDirection, NewtonDirection, BFGSUpdate, TrustRegionMethod
 class SteepestDescent(SteepestDescentDirection, LineSearch, GenericAlgorithm):
-    def __init__(self, objective_function: Diff2Function) -> None:
-        super.__init__(objective_function)
-        
-    # def step_length(self) -> float:
-    #     return self.line_
-     
-    
-     
+    def __init__(self, objective_function: DiffFunction, gradient_tolerance: Optional[float] = None) -> None:
+        super().__init__(objective_function)
+        if gradient_tolerance:
+            self.gradient_tolerance = gradient_tolerance
+
+    def step_direction(self) -> Vector:
+        self.report_current_state_to_str()
+        return self.steepest_descent_direction()
+
+    def step_length(self) -> float:
+        return self.line_search_with_wolfe_conditions(a_max=2)
+
+    def are_stop_criteria_met(self) -> bool:
+        return self.is_budget_exhausted() or self.is_gradient_almost_zero()
+
+
+class Newton(NewtonDirection, LineSearch, GenericAlgorithm):
+    """
+    The Newton algorithm for finding minima
+
+    The hessian is used whenever it is positive, otherwise the positive
+    modified hessian is used
+    """
+
+    def __init__(self, objective_function: Diff2Function, gradient_tolerance: Optional[float] = None) -> None:
+        super().__init__(objective_function)
+        if gradient_tolerance:
+            self.gradient_tolerance = gradient_tolerance
+
+    def step_direction(self) -> Vector:
+        p = self.newton_direction()
+        if self.is_descent_direction(p):
+            return p
+        else:
+            return self.newton_direction_with_hessian_modification()
+
+    def step_length(self) -> float:
+        return self.line_search_with_wolfe_conditions(a_max=2)
+
+    def are_stop_criteria_met(self) -> bool:
+        return self.is_budget_exhausted() or self.is_gradient_almost_zero()
+
+
+
+
+class BFGSWithLineSearch(BFGSUpdate, LineSearch, GenericAlgorithm):
+    ...
+
+
+class BFGSWithLineSearch(BFGSUpdate, TrustRegionMethod, GenericAlgorithm):
+    ...
 
      
 
@@ -209,19 +271,10 @@ class SteepestDescent(SteepestDescentDirection, LineSearch, GenericAlgorithm):
 
      
 
-     
-
-     
-
 
      
      
 
-# class SteepestDescent(SteepestDescentMixin, LineSearchMixin, BaseAlgorithm): ...
-
-# class SteepestDescentRandomStepLength(SteepestDescent, RandomStepLengthMixin, BaseAlgorithm): ...
-
-class Newton():...
 
 class TestAlgorithm(LineSearch, GenericAlgorithm):
     def step_length(self) -> float:

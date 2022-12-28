@@ -9,9 +9,12 @@ from warnings import warn
 from functools import lru_cache, cached_property
 
 import numpy as np
+from numpy import ndarray, eye
+from scipy.linalg import solve, LinAlgError
 from mathchinery import Point, Vector, Function
 from mathchinery import FunctionNotDifferentiableError, FunctionNotTwiceDifferentiableError
 from random import random        
+from math import isclose
 
 
 #### todo ADD
@@ -39,10 +42,24 @@ minimal_req = """
 
 
 class GradientBasedMethod:
+    """A mixin class implementing functionality for methods that use gradients"""
+
     _DEFAULT_GRADIENT_TOLERANCE = 10**-4
 
     @property
-    def gradient(self: GenericAlgorithm) -> Function:
+    def gradient_tolerance(self) -> float:
+        try:
+            return self._tolerance
+        except AttributeError:
+            self._gradient_tolerance = self._DEFAULT_GRADIENT_TOLERANCE
+            return self._gradient_tolerance
+
+    @gradient_tolerance.setter
+    def gradient_tolerance(self, tolerance: float) -> None:
+        self._gradient_tolerance = tolerance
+
+    @property
+    def gradient(self) -> Function:
         """Returns the gradient of the objective function"""
         try:
             return self.objective_function.gradient
@@ -51,24 +68,37 @@ class GradientBasedMethod:
         raise FunctionNotDifferentiableError(self.objective_function)
 
     @property
-    def gradf(self: GenericAlgorithm) -> Function:
+    def gradf(self) -> Function:
+        """
+        Returns the gradient of the objective function
+
+        A shorter alias for gradient
+        """
         return self.gradient
 
     @property
-    def gradfk(self: GenericAlgorithm) -> Vector:
+    def gradfk(self) -> Vector:
+        """Returns the gradient at the current point xk"""
         return self.gradf(self.xk)
 
-    @property
-    def pkgradfk(self: GenericAlgorithm) -> float:
-        pkgradfk = self.pk * self.gradfk
-        if pkgradfk >= 0:
-            self.report_warning(
-                f"the provided vector pk={self.pk} is not a descent direction since pk * gradf(xk) == {pkgradfk} >= 0",
-            )
-        return pkgradfk
+    def is_descent_direction(self, vector: Vector) -> float:
+        """Is the vector a descent direction?"""
+        return vector * self.gradfk < 0
 
-    def is_gradient_almost_zero(self: GenericAlgorithm, tolerance: float = _DEFAULT_GRADIENT_TOLERANCE) -> bool:
-        return abs(self.gradfk) < tolerance
+    def is_pk_descent_direction(self) -> float:
+        return self.is_descent_direction(self.pk)
+
+    def is_gradient_almost_zero(self) -> bool:
+        """Is the gradient close enough to zero?"""
+        return isclose( abs(self.gradfk), 0, abs_tol=self.gradient_tolerance )
+
+    @property
+    def total_evaluations(self) -> int:
+        return self.objective_function.total_evaluations
+
+    @property
+    def total_unweighted_evaluations(self) -> int:
+        return self.objective_function.total_unweighted_evaluations
 
 
 
@@ -80,29 +110,37 @@ class GradientBasedMethod:
     #https://github.com/gjkennedy/ae6310/blob/master/Line%20Search%20Algorithms.ipynb
     #https://indrag49.github.io/Numerical-Optimization/line-search-descent-methods.html
 class LineSearch(GradientBasedMethod):
+    """A mixin class implementing functionality for methods that use line searches"""
+
     _DEFAULT_c1 = 10**-4
     _DEFAULT_c2 = 0.9
     _DEFAULT_MAX_ITERATIONS_IN_LINE_SEARCH = 10
 
     def phi(self: GenericAlgorithm, a: float) -> float:
+        """Returns the value objective_function(xk + a*pk)"""
         return self.f( self.xk + a * self.pk )
 
     @property
     def phi0(self: GenericAlgorithm) -> float:
+        """Returns the value objective_function(xk)"""
         return self.fk
 
     def dphi(self: GenericAlgorithm, a: float) -> float:
+        """Returns the value objective_function.gradient(xk + a*pk)"""
         return self.pk * self.gradf( self.xk + a * self.pk )
 
     @property
     def dphi0(self: GenericAlgorithm) -> float:
-        return self.pkgradfk
+        """Returns the value objective_function.gradient(xk)"""
+        return self.pk * self.gradfk
 
-    def is_armijo_met(self: GenericAlgorithm, a: float, c1: float = _DEFAULT_c1):
+    def is_armijo_met(self: GenericAlgorithm, a: float, c1: float = _DEFAULT_c1) -> bool:
+        """Does the Armijo condition hold for the objective_function on xk + a*pk?"""
         return self.phi(a)  <=  self.phi0 + c1 * a * self.dphi0
 
-    def is_strong_curvature_met(self: GenericAlgorithm, a: float, c2: float):
-        return abs(self.dphi(a))  <=  - c2 * self.pkgradfk
+    def is_strong_curvature_met(self: GenericAlgorithm, a: float, c2: float) -> bool:
+        """Does the strong curvature condition hold for the objective_function on xk + a*pk?"""
+        return abs(self.dphi(a))  <=  - c2 * self.dphi0
 
     def report_line_search_failure(self: GenericAlgorithm, method_name: str, reason: Optional[str] = None ) -> None:
         self.report_warning(
@@ -110,11 +148,18 @@ class LineSearch(GradientBasedMethod):
         )
 
     def backtrack_line_search_with_armijo(
-                                            self: GenericAlgorithm,
+                                            self,
                                             a_initial: float = 1,
                                             c1: float = _DEFAULT_c1,
                                             max_iterations: int = _DEFAULT_MAX_ITERATIONS_IN_LINE_SEARCH
                                           ) -> float:
+        """
+        Returns a step length where the Armijo condition is satisfied, if such a point is found in 'max_iterations' iterations.
+        Otherwise, it presents a warning and it returns the last candidate length examined.
+        """
+        if not self.is_pk_descent_direction():
+            raise ValueError(f"the direction pk={self.pk} at the current point xk={self.xk} is not a descent direction")
+
         a_cnd = a_initial
         for i in range(max_iterations):
             if self.is_armijo_met(a_cnd, c1):
@@ -123,29 +168,27 @@ class LineSearch(GradientBasedMethod):
         self.report_line_search_failure( method_name = "backtracking line search with the Armijo condition" )
         return a_cnd
 
-    def _interpolate_with_bisection(self, a: float, b: float) -> float:
-        return (a+b)/2
-    
-    def _interpolate_quadratically(self, a: float, b: float) -> float:
-        return 
-        
-    def _interpolate_cubically(self, a: float, b: float) -> float:
-        return
-
     def _zoom(
-                self: GenericAlgorithm,
+                self,
                 a_lowest_armijo: float,
                 a_other: float,
-                interpolate: Callable[[float,float], float],
                 c1: float = _DEFAULT_c1,
                 c2: float = _DEFAULT_c2,
                 max_iterations: int = _DEFAULT_MAX_ITERATIONS_IN_LINE_SEARCH
              ) -> float:
-        method_name = "zoom phase of the line search with Wolfe conditions"
-        start = (a_lowest_armijo, a_other)
+        """
+        Assuming that a point satisfying the Wolfe conditions exists between in one of the intervals
+        (a_lowest_armijo,a_other) or (a_other,a_lowest_armijo), the method zooms in the interval
+        until it is found or the iterations are used up.
+        In the latter case, the method returns the point with the minimum functional value that
+        satisfies the Armijo condition.
+
+        Part of the line search with strong Wolfe conditions algorithm as documented in Numerical
+        Optimization by J.Nocedal and S.Wright.
+        """
 
         for i in range(max_iterations):
-            a = interpolate( min(a_lowest_armijo, a_other), max(a_lowest_armijo, a_other) )
+            a = (a_lowest_armijo + a_other)/2
 
             if not self.is_armijo_met(a, c1) or self.phi(a) >= self.phi(a_lowest_armijo):
                 a_other = a
@@ -156,53 +199,54 @@ class LineSearch(GradientBasedMethod):
                     a_other = a_lowest_armijo
                 a_lowest_armijo = a
 
-        self.report_line_search_failure(method_name, reason=f"for {start=}. Returning a_lowest_armijo")
-        return a_lowest_armijo
+        return a
 
 
 
     def line_search_with_wolfe_conditions(
                                             self: GenericAlgorithm,
-                                            interpolate: Callable[[float,float], float],
                                             a_max: float,
                                             c1: float = _DEFAULT_c1,
                                             c2: float = _DEFAULT_c2,
                                             max_iterations: int = _DEFAULT_MAX_ITERATIONS_IN_LINE_SEARCH
                                           ) -> float:
-        # 0<c1<c2<1
-        # c1 = 10**-4
-        # c2 = 0.9 quasiNewton
-        # c2 = 0.1 conjugate gradient
-        a = 1
+        """
+        Performs a line search with strong Wolfe conditions on the current direction
+
+        The method is implemented as documented in Numerical Optimization by J.Nocedal and S.Wright.
+
+        Typical values for 0<c1<c2<1:
+            c1 = 10**-4,
+            c2 = 0.9 in Quasi Newton methods,
+            c2 = 0.1 in Conjugate Gradient methods
+        """
+        if not self.is_pk_descent_direction():
+            raise ValueError(f"the direction pk={self.pk} at the current point xk={self.xk} is not a descent direction")
+
         a_prev = 0
-        method_name = "line search with Wolfe conditions"
-        a_max = max(1, a_max)
+        a = (a_prev + a_max)/2
 
         for i in range(max_iterations):
-            if a > a_max:
-                self.report_line_search_failure( method_name, "as a exceeded a_max. Execute backtracking line search with Armijo condition" )
-                return self.backtrack_line_search_with_armijo(a, c1, max_iterations)
-
             if not self.is_armijo_met(a, c1) or self.phi(a)>=self.phi(a_prev):
-                return self._zoom(a_prev, a, interpolate, c1, c2, max_iterations)
+                return self._zoom(a_prev, a, c1, c2, max_iterations)
             if self.is_strong_curvature_met(a, c2):
                 return a
             if self.dphi(a) >= 0:
-                return self._zoom(a, a_prev, interpolate, c1, c2, max_iterations)
+                return self._zoom(a, a_prev, c1, c2, max_iterations)
 
             a_prev = a
-            a = self._interpolate( min(a, a_max), max(a, a_max) )
+            a = (a_prev + a_max)/2
 
-
-        self.report_line_search_failure( method_name, "as a exceeded a_max" )
-        return self.backtrack_line_search_with_armijo(a, c1, max)
-    
+        return a
 
 
 
 class SteepestDescentDirection(GradientBasedMethod):
-    def steepest_descent_direction(self: GenericAlgorithm) -> Vector:
-        return - self.gradient(self.xk)
+    """A mixin class that implements the steepest descent direction"""
+
+    def steepest_descent_direction(self) -> Vector:
+        """Returns the direction of the steepest descent"""
+        return - self.gradfk
 
 
 
@@ -210,78 +254,142 @@ class SteepestDescentDirection(GradientBasedMethod):
 
 
 
+class QuadraticModel(GradientBasedMethod, ABC):
+    """A mixin class implementing functionality for methods that use quadratic models"""
 
-
-        
-        
-    
-    
-    
-        
-    
-
-
-
-
-
-
-
-class SecondOrderApproximation(GradientBasedMethod, ABC):
-    
     @property
     @abstractmethod
-    def hessian_approximation(self):
-        return self.function.hessian
+    def hessian_approximation(self) -> Function:
+        """Returns a matrix valued function that approximates the hessian of the objective function"""
+        raise NotImplementedError
+
+    @property
+    def Bk(self) -> ndarray:
+        """The hessian_approximation at the current point xk"""
+        return self.hessian_approximation(self.xk)
 
 
-        
+
+
+
+
+
+class NewtonDirection(QuadraticModel):
+    """A mixin class that implements the Newton direction"""
+
+    @property
+    def hessian(self) -> Function:
+        """Returns a function that computes the hessian of the objective function"""
+        try:
+            return self.objective_function.hessian
+        except AttributeError:
+            raise FunctionNotTwiceDifferentiableError from None
+
+    @property
+    def hessian_approximation(self) -> Function:
+        return self.hessian
+
+    @property
+    def hessfk(self) -> ndarray:
+        """Returns the hessian at the current point xk"""
+        return self.hessian(self.xk)
+
+    def newton_direction(self) -> Vector:
+        """
+        Returns the Newton direction at the current point xk
+
+        There is no check whether the hessian is positive.
+        """
+        newton = solve(self.hessfk, -self.gradfk.T, assume_a="sym")
+        return Vector(newton.T)
+
+    def newton_direction_with_hessian_modification(self) -> Vector:
+        """
+        Returns the Newton direction biased toward a direction that makes the hessian positive
+        """
+        hessfk_isnt_positive = True
+        H = self.hessfk
+        m = min(H.diagonal())
+        I = eye(self.domain_dimensions)
+        b = 10**-3
+
+        if m > 0:
+            t = 0
+        else:
+            t = -m + b
+
+        while hessfk_isnt_positive:
+            try:
+                newton = solve(self.hessfk + t*I, -self.gradfk.T, assume_a="pos") # this call fails when the hessian is not positive
+                return Vector(newton.T)
+            except LinAlgError:
+                t = max(10*t, b)
+
+
+
+
+
+
+
+
+class TrustRegionMethod(QuadraticModel):
+    """A mixin class implementing functionality for trust region methods"""
+    @property
+    def radius(self) -> float:
+        return self._radius
+
+    @radius.setter
+    def radius(self, number: float) -> None:
+        self._radius = number
+
+    def update_radius(self) -> None:
+        raise NotImplementedError
+
+    @property
+    def hessian_approximation(self) -> Function:
+        return self._hessian_matrix_approximation
+
+    @hessian_approximation.setter
+    def hessian_approximation(self, matrix: ndarray) -> Function:
+        self._hessian_matrix_approximation = matrix
+
+
+    def cauchy_point(self) -> Vector:
+        gBgT = self.gradfk @ self.Bk @ self.gradfk.T[0]
+        absgradfk = abs(self.gradfk)
+        if gBgT <= 0:
+            tau = 1
+        else:
+            tau = min(1, absgradfk**3/(self.radius*gBgT) )
+        return - (tau * self.radius) / absgradfk * self.gradfk
+
+    def dogleg_point(self) -> Vector:
+        raise NotImplementedError
+
+
+
+class QuasiNewton(QuadraticModel):
+    """A mixin class implementing functionality for quasi Newton methods"""
+
+class BFGSUpdate(QuasiNewton):
+    """A mixin class that implements the BFGS update"""
+    def __init__(self):raise NotImplementedError
     
+
+
+
     
 
 
     
+class Random:
+    """A mixin class that implements random parameters"""
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-
-class Dogleg:...
-
-
-class NewtonDirection(GradientBasedMethod):
-    def direction(self) -> Vector:
-        x = self.current
-        return self.inverse_hessian() @ self.negative_gradient
-
-
-    
-
-
-class RandomMixin(ABC):
-    @abstractmethod
-    def random(self) -> float: ...
-    
-class RandomStepLength:
-    def step_length(self) -> Vector:
+    def random_step_length(self) -> float:
         return 2*random() - 1
-class RandomDirection:
-    def direction(self) -> Vector:
-        return Vector([np.random.rand(self.dimension)])
+    
+    def random_step_direction(self) -> Vector:
+        return Vector([np.random.rand(self.domain_dimensions)])
     
 
         
@@ -314,18 +422,6 @@ class ConjugateGradient:...
     
 
 
-
-
-
-
-class QuasiNewton(GradientBasedMethod):
-    def __init__(self, function, gradient, positive_matrix, starting_point, compute_step_func) -> None:
-        super().__init__(function, gradient, starting_point, compute_step_func)
-        self.positive = positive_matrix # positive definite symmetric matrix
-    
-    def update_matrix(self): #### ????
-        # slide 134
-        pass
     
 
 class DFP(QuasiNewton):...
@@ -338,17 +434,6 @@ class L_BFGS(QuasiNewton):...
 
         
 
-
-
-class BFGS():
-    def step(self):
-        return 1
-    def direction(self):
-        return 1
-# a=BFGS(lambda x: x, (0,0))
-# print(a)
-# print(next(a))
-# print(BFGS.__annotations__, BFGS.__dict__, a.__dict__)
 
 
 

@@ -8,7 +8,7 @@ from typing import List
 __all__ = [
     "rosenbrock",
     "griewank_1st_order",
-    "griewank_2nd_order"
+    "griewank_2nd_order",
     "himmelblau",
     "sphere2",
     "sphere3",
@@ -245,7 +245,7 @@ def D1_cubic(t):
 
 @Function
 def D2_cubic(t):
-    return 6 * Vector(t)
+    return 6 * array(t, ndmin=2)
 
 cubic = TestFunction( D0_cubic, D1_cubic, D2_cubic, name="cubic" )
 cubic.minimizers = [Point(1)]
@@ -258,6 +258,82 @@ cubic.minimizers = [Point(1)]
 
 
 
+
+
+
+
+
+
+
+
+import algorithms
+nm=algorithms.SteepestDescent(rosenbrock)
+n=algorithms.Newton(rosenbrock)
+
+
+P=Point(-.5,1.5)
+
+def viz(fun,path,x=0,y=0):
+    x0 = [x[0] for x in path]
+    y0 = [x[1] for x in path]
+
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    
+    xmin = min(-abs(x),min(x0)-.5)
+    xmax = max(abs(x),max(x0)+.5)
+    xlist = np.linspace(xmin, xmax, 1000 )
+
+    ymin = min(-abs(y), min(y0)-.5)
+    ymax = max(abs(y),max(y0)+.5)
+    ylist = np.linspace(ymin, ymax, 1000 )
+        
+    X, Y = np.meshgrid(xlist, ylist)
+    Z = fun._wrapped(X,Y)
+    fig,ax=plt.subplots(1,1)
+    zmin = np.min(Z)
+    zmax = np.max(Z)
+    Zvalues = fun._wrapped(X,Y)
+    d = np.median(Zvalues)
+    cntrvals = [zmin,.00001*d,.0001*d,.001*d,.01*d,.1*d,.5*d,d,d*1.5,2*d,3*d,zmax]
+    cpvals = []
+    for n,c in enumerate(cntrvals):
+        try:
+            cpvals.extend([c+lam*(cntrvals[n+1]-c) for lam in [0,.2,.5,.7,.9]])
+        except IndexError:
+            pass
+    cp = ax.contourf(X, Y, Z, cpvals)
+    cntr = ax.contour(X, Y, Z, cntrvals, colors='black')
+    ax.clabel(cntr, fmt="%2.1f", use_clabeltext=True)
+    fig.colorbar(cp) # Add a colorbar to a plot
+    ax.set_title('Filled Contours Plot')
+    #ax.set_xlabel('x (cm)')
+    #ax.set_ylabel('y (cm)')
+    plt.plot(x0,y0,"x-r")
+    plt.plot(x0[0], y0[0], '*-r')
+    for n,_ in enumerate(x0):
+        i=x0[n]
+        j=y0[n]
+        ax.annotate(str(n),(i,j), color="lightgrey")
+    plt.show(block=False)
+
+
+#n.run(P,1000)
+#nm.run(P,1000)
+
+#viz(rosenbrock,n.path)
+#viz(rosenbrock,nm.path)
+
+from obj_func import *
+
+
+
+a=algorithms.Newton(objective_function)
+a.run(Point(1,1,1,1,1),10000000)
+
+d=algorithms.SteepestDescent(objective_function)
+d.run(Point(1,1,1,1,1),10000000)
 
 
 # def rasting(x, n):

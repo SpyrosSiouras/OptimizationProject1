@@ -7,14 +7,6 @@ import matplotlib.style as mplstyle
 mplstyle.use(['ggplot', 'fast'])
 
 
-from optimization.test_functions import griewank_1st_order
-
-def gr(t):
-    return griewank_1st_order(Vector(t))
-def Dgr(t):
-    return griewank_1st_order.gradient(Vector(t))[0]
-
-
 
 
 
@@ -57,7 +49,7 @@ def start_visualize(f,gradf,x,p,amax, ymax= None,c1=10**-4,c2=0.9):
         plt.ylim( -ymax, ymax )
     
     lim = lambda a: max([ abs(i) for i in plt.ylim() ])
-    pink=plt.fill_between(x=a, y1=-lim(a), y2=phi, color="pink",where=(phi<f(0)), label="φ is smaller")
+    pink=plt.fill_between(x=a, y1=-lim(a), y2=phi, color="pink",where=(phi<phi0), label="φ is smaller")
     green = plt.fill_between(x=a, y1=lim(a), y2=phi, color="green",where=phi<=l, label="armijo is true")
     yellow=plt.fill_between(x=a, y1=lim(a), y2=phi, color="yellow",where=np.logical_not( np.array([
                                                                                             armijo_isnt_met(f, f(x), p*gradf(x), x, p, a_, c1=c1) for a_ in a
@@ -66,10 +58,9 @@ def start_visualize(f,gradf,x,p,amax, ymax= None,c1=10**-4,c2=0.9):
                                                                                         label="armijo is true"
                                                                                         )
     purple=plt.fill_between(x=a, y1=-lim(a)*2/3, y2=phi , color="purple",where=np.logical_not(
-                                                                                                np.logical_not(np.array([
-                                                                                                    strong_curviture_isnt_met(gradf, p*gradf(x), x, p, a_, c2=c2) for a_ in a
-                                                                                                ]))),
-                                                                                                label="curviture is true"
+                                                                                                [strong_curviture_isnt_met(gradf, p*gradf(x), x, p, a_, c2=c2) for a_ in a]
+                                                                                             ),
+                                                                                            label="curviture is true"
     )
     orange=plt.fill_between(x=a, y1=phi, y2=-lim(a)/5*2, color="orange",where=np.logical_and(
                                                                                             np.logical_not(np.array([
@@ -148,7 +139,7 @@ def armijo_isnt_met(f, fx, pgradfx, x, p, a, c1=10**-4):
     return f(x+a*p) >= fx + c1 * a * pgradfx
 
 def curviture_isnt_met(gradf, pgradfx, x, p, a, c2 = 0.9):
-    return p*gradf(x+a*p) <= c2*pgradfx
+    return p*gradf(x+a*p) <= -c2*pgradfx
 
 def strong_curviture_isnt_met(gradf, pgradfx, x, p, a, c2 = 0.9):
     return abs(p*gradf(x+a*p)) >= c2*abs(pgradfx)
@@ -181,7 +172,7 @@ def line_search_backtrack_armijo(f, gradf, x, p, c1=10**-4,c2=0.9, debug=True):
 #https://github.com/gjkennedy/ae6310
 #https://github.com/gjkennedy/ae6310/blob/master/Line%20Search%20Algorithms.ipynb
 #https://indrag49.github.io/Numerical-Optimization/line-search-descent-methods.html
-def line_search(f, gradf, x, p, a_max, c1=10**-4, c2=0.9, debug=True):
+def line_search(f, gradf, x, p, a_max, c1=10**-4, c2=0.9, max_iter=10 ,debug=True):
     phi = lambda a: f(x+a*p)
     pgradfx = p*gradf(x)
     if pgradfx>=0: raise ValueError(f"{p} is not a descent direction")
@@ -190,13 +181,14 @@ def line_search(f, gradf, x, p, a_max, c1=10**-4, c2=0.9, debug=True):
     a_= [(0,"φ0")]
     a_next = (a_[-1][0]+a_max)/2
     
-    def zoom(a_l, a_h):
+    def zoom(a_l, a_h, max_iter):
         A_L = []
+        i = 0
         print(f"start zooming {a_l=} {a_h=}")
         try:
-            while not isclose(a_l,a_h):
-                A_L.append((a_l,"a_l"))
-                A_L.append((a_h, "a_h"))
+            while not isclose(a_l,a_h, abs_tol=10**-9) and max_iter>i:
+                #A_L.append((a_l,"a_l"))
+                #A_L.append((a_h, "a_h"))
                 a = (a_l+a_h)/2
                 A_L.append((a,"a"))
                 print(f"{a_l=},{a_h=} {a=}",end=" ")
@@ -207,6 +199,7 @@ def line_search(f, gradf, x, p, a_max, c1=10**-4, c2=0.9, debug=True):
                     print()
                 if armijo_isnt_met(f, fx, pgradfx, x, p, a, c1) or (phi(a)>=phi(a_l)):
                     print("change high")
+                    print(f"{a_l=} {a=} {a_h=} ")
                     a_h = a
                 else:
                     if abs(Dphi(a))<= -c2*Dphi(0):
@@ -216,6 +209,7 @@ def line_search(f, gradf, x, p, a_max, c1=10**-4, c2=0.9, debug=True):
                         print("switcharoo")
                         a_h = a_l
                     a_l = a
+                i+=1
             #a = (a_l + a_h)/2
             #return a
             if armijo_isnt_met(f, fx, pgradfx, x, p, a, c1) or abs(Dphi(a))> -c2*Dphi(0):
@@ -228,25 +222,26 @@ def line_search(f, gradf, x, p, a_max, c1=10**-4, c2=0.9, debug=True):
             return a
 
     try:
-        while not isclose(a_[-1][0],a_max):
+        i=0
+        while not isclose(a_[-1][0],a_max, abs_tol=10**-9) and max_iter>i:
             print(f"{a_=} {a_next=}")
             if armijo_isnt_met(f, fx, pgradfx, x, p, a_next, c1):
                 print("zoom1a")
                 if phi(a_next)<phi(a_[-1][0]): 
                     print(f"wtf!!! {a_[-1]=} {a_next=} ")
                     print(f"       {phi(a_[-1][0])} {phi(a_next)=}")
-                A_L, a_0 = zoom(a_[-1][0],a_next)
+                A_L, a_0 = zoom(a_[-1][0],a_next, max_iter)
                 return a_ + [(a_next,"a_next")] + A_L + [(a_0,"last")]
             if (phi(a_next)>=phi(a_[-1][0])) and len(a_)>1:
                 print("zoom1b")
-                A_L, a_0 = zoom(a_[-1][0],a_next)
+                A_L, a_0 = zoom(a_[-1][0],a_next, max_iter)
                 return a_ + [(a_next,"a_next")] + A_L + [(a_0,"last")]
             if abs(Dphi(a_next))<=-c2*Dphi(0):
                 print("found wolfe!")
                 return a_
             if Dphi(a_next)>=0:
                 print(f"zoom3")
-                A_L, a_0 = zoom(a_next,a_[-1])
+                A_L, a_0 = zoom(a_next,a_[-1], max_iter)
                 return a_ + [(a_next,"a_next")] + A_L + [(a_0,"last")]
             a_.append((a_next,"a_"))
             a_next = (a_next+a_max)/2
@@ -271,10 +266,12 @@ def viz_line_search(f, gradf, x, p, a_max, ymax= None, c1=10**-4, c2=0.9, debug=
 from optimization.mathchinery import Vector
 
 
-def f(x,y):
+def f(v):
+    x,y = v
     return x**2+y**2
 
-def gradf(x,y):
+def gradf(v):
+    x,y = v
     return 2*Vector(x,y)
 
 def s(x):
@@ -294,4 +291,13 @@ def c(t):
 
 def Dc(t):
     return 3*t**2-3
+
+
+def rosenbrock(v):
+    x,y = v
+    return (1-x)**2 + 100*(y-x**2)**2
+
+def Drosenbrock(v):
+    x,y = v
+    return Vector(  2*(x-1) + 400*(x**2-y)*x,  200*(y-x**2)  )
     

@@ -4,6 +4,7 @@ from scipy.linalg import inv
 
 from dataset import plot_data
 
+from mathchinery import Vector
 
 
 
@@ -89,7 +90,7 @@ def obj_func(a):
 
 def gradient_obj_func(a):
     a=np.array(a)
-    return M0 @ a + v0
+    return Vector(M0 @ a + v0)
 
 def hessian_obj_func(a):
     a=np.array(a)
@@ -140,9 +141,9 @@ if __name__ == "__main__":
 
 
 
-from optimization.mathchinery import Diff2Function
-from optimization.mathchinery import Function
-from optimization.mathchinery import Vector, Point
+from mathchinery import Diff2Function
+from mathchinery import Function
+from mathchinery import Vector, Point
 
 @Function
 def D0_objective_function(*vector):
@@ -157,7 +158,7 @@ def D2_objective_function(*vector):
     return hessian_obj_func(vector)
 
 objective_function = Diff2Function(D0_objective_function, D1_objective_function, D2_objective_function)
-objective_function._dimensions = 5
+objective_function.domain_dimensions = 5
 
 # from optimization.algorithms import Newton
 
