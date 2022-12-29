@@ -29,11 +29,12 @@ class TestFunction(Diff2Function):
     __slots__ = Diff2Function.__slots__ + ("_minimizers",)
 
     @property
-    def minimizers(self) -> List:
+    def minimizers(self) -> List[Point]:
+        """Some of the minimizers of the function"""
         return self._minimizers
 
     @minimizers.setter
-    def minimizers(self, value):
+    def minimizers(self, value) -> None:
         self._minimizers = value
 
 
@@ -264,7 +265,7 @@ cubic.minimizers = [Point(1)]
 
 
 
-
+from mathchinery import is_close, is_almost_zero, is_positive
 
 import algorithms
 nm=algorithms.SteepestDescent(rosenbrock)
@@ -273,9 +274,12 @@ n=algorithms.Newton(rosenbrock)
 
 P=Point(-.5,1.5)
 
-def viz(fun,path,x=0,y=0):
+def viz(algo,x=0,y=0):
+    
+    path = algo.path
     x0 = [x[0] for x in path]
     y0 = [x[1] for x in path]
+    
 
 
     import numpy as np
@@ -283,20 +287,30 @@ def viz(fun,path,x=0,y=0):
     
     xmin = min(-abs(x),min(x0)-.5)
     xmax = max(abs(x),max(x0)+.5)
-    xlist = np.linspace(xmin, xmax, 1000 )
+    xlist = np.linspace(xmin, xmax, 100 )
 
     ymin = min(-abs(y), min(y0)-.5)
     ymax = max(abs(y),max(y0)+.5)
-    ylist = np.linspace(ymin, ymax, 1000 )
+    ylist = np.linspace(ymin, ymax, 100 )
         
     X, Y = np.meshgrid(xlist, ylist)
-    Z = fun._wrapped(X,Y)
+
+    w = np.vectorize(algo.f.call_separately_on)
+
+    Z = w(X,Y)
+
+    
     fig,ax=plt.subplots(1,1)
+
+    
     zmin = np.min(Z)
     zmax = np.max(Z)
-    Zvalues = fun._wrapped(X,Y)
+    Zvalues = w(X,Y)
+
+    
     d = np.median(Zvalues)
-    cntrvals = [zmin,.00001*d,.0001*d,.001*d,.01*d,.1*d,.5*d,d,d*1.5,2*d,3*d,zmax]
+    cntrvals = [zmin,.00001*d,.00005*d,.0001*d,.0005*d,.001*d,.005*d,.01*d,.05*d,.1*d,.25*d,.5*d,.75*d,d,d*1.5,2*d,3*d,zmax]
+    cntrvals.sort()
     cpvals = []
     for n,c in enumerate(cntrvals):
         try:
@@ -306,8 +320,8 @@ def viz(fun,path,x=0,y=0):
     cp = ax.contourf(X, Y, Z, cpvals)
     cntr = ax.contour(X, Y, Z, cntrvals, colors='black')
     ax.clabel(cntr, fmt="%2.1f", use_clabeltext=True)
-    fig.colorbar(cp) # Add a colorbar to a plot
-    ax.set_title('Filled Contours Plot')
+    #fig.colorbar(cp) # Add a colorbar to a plot
+    ax.set_title(f"{algo.__class__.__name__}: found minimizer={algo.xk}\ncomputed in {len(algo.path)} steps and {algo.total_unweighted_evaluations} evaluations")
     #ax.set_xlabel('x (cm)')
     #ax.set_ylabel('y (cm)')
     plt.plot(x0,y0,"x-r")
@@ -316,24 +330,46 @@ def viz(fun,path,x=0,y=0):
         i=x0[n]
         j=y0[n]
         ax.annotate(str(n),(i,j), color="lightgrey")
+
+
+    def plot_vectors(pks,color):
+        p0 = [p[0] for p in pks]
+        p1 = [p[1] for p in pks]
+        plt.quiver(x0,y0,p0,p1,color=color,units='xy',width=0.005)
+        for n,_ in enumerate(pks):
+            i=x0[n]
+            j=y0[n]
+            #ax.annotate(str(pks[n]),(i,j), color="lightgrey")
+        
+    
+    #plot_vectors([ algo.newton_direction_unsafe(x) for x in algo.path ],"orange")
+    #plot_vectors([ algo.newton_direction_with_hessian_modification(x) for x in algo.path ],"pink")
+
+    
+    
+    
     plt.show(block=False)
 
 
-#n.run(P,1000)
-#nm.run(P,1000)
+#n.run(P)
+nm.gradient_tolerance = 10**-3
+nm.run(P,with_budget=1000)
 
 #viz(rosenbrock,n.path)
-#viz(rosenbrock,nm.path)
+viz(nm)
 
 from obj_func import *
 
 
 
-a=algorithms.Newton(objective_function)
-a.run(Point(1,1,1,1,1),10000000)
+n=algorithms.Newton(himmelblau);n.run(2,1);viz(n)
 
-d=algorithms.SteepestDescent(objective_function)
-d.run(Point(1,1,1,1,1),10000000)
+nd=algorithms.NewtonDogleg(himmelblau);nd.run(2,1);viz(nd)
+
+nhm=algorithms.NewtonWithHessianModification(himmelblau);nhm.run(2,1);viz(nhm)
+
+d=algorithms.SteepestDescent(himmelblau);d.run(2,1);viz(d)
+#d.run(Point(1,1,1,1,1),10000000)
 
 
 # def rasting(x, n):

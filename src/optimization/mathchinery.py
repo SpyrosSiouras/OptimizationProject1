@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 
-from numpy import array, ndarray, float64
+from numpy import array, ndarray, float64, zeros
+from scipy.linalg import solve
 from numpy.linalg import inv, cholesky, LinAlgError
 from numpy.typing import ArrayLike
 
 from typing import Any, Callable, Optional, Tuple
 
 from numbers import Number
-from math import acos
+from math import isclose as is_close, copysign, acos
 
 from functools import lru_cache, wraps
 
@@ -24,11 +25,26 @@ from copy import deepcopy
 
 
 __all__ = [
+    "is_almost_zero",
     "Vector",
     "Function",
     "DiffFunction",
     "Diff2Function",
 ]
+
+
+
+
+
+def is_almost_zero(num: float, tolerance: float = 10**-9) -> bool:
+    return is_close(num, 0.0, rel_tol=0.0, abs_tol=tolerance)
+
+
+def is_positive(num:  float) -> bool:
+    return copysign(1, num) > 0
+
+
+
 
 
 
@@ -47,21 +63,28 @@ class Vector:
         """
         The coordinates can be given in a container or separately one by one
         """
-        if len(coordinates) == 1:
-            self._coords = array(*coordinates, dtype=float64, ndmin=2)
-        else:
-            self._coords = array(coordinates, dtype=float64, ndmin=2)
+        try:
+            if len(coordinates) == 1:
+                self._coords = array(*coordinates, dtype=float64, ndmin=2)
+            else:
+                self._coords = array(coordinates, dtype=float64, ndmin=2)
+        except ValueError:
+            raise ValueError(f"unable to create {self.__class__.__name__} from {coordinates}") from None
+
+    @staticmethod
+    def zero(dimension: int) -> Vector:
+        return Vector(zeros(dimension))
 
     @property
-    def T(self):
+    def T(self) -> Vector:
         return self._coords.T
 
     @property
-    def shape(self):
+    def shape(self) -> Tuple[int, int]:
         return self._coords.shape
 
     @property
-    def dimension(self):
+    def dimension(self) -> int:
         return len(self)
 
     def __len__(self) -> int:
@@ -121,13 +144,19 @@ class Vector:
         """Returns the inner product of the vectors"""
         return (self._coords @ other._coords.T)[0][0]
 
-    @_validate_vector_input
-    def __matmul__(self: Vector, other: ndarray) -> Vector | float:
+    def __matmul__(self: Vector, other: ndarray) -> Vector:
         return Vector( self._coords @ other )
 
-    @_validate_vector_input
     def __rmatmul__(self: Vector, other: ndarray) -> ndarray:
         return other @ self._coords
+
+    def multiplied_with_inverse(self, matrix: ndarray, assume_a: str="gen") -> Vector:
+        """
+        Returns self @ inverse(matrix)
+
+        assume_a accepts the same options as scipy.solve
+        """
+        return Vector( multiplication_with_inverse(self._coords, matrix, assume_a) )
 
     def squared(self: Vector) -> float:
         """Returns the inner product of the vector with itself"""
@@ -146,7 +175,9 @@ class Vector:
         return acos( self.cos_angle(other) )
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + self._coords.__repr__()[5:]
+        return self.__class__.__name__ + str()
+    def __str__(self) -> str:
+        return "(" + ", ".join( str(self._coords)[2:-2].split() ) + ")"
 
 
 
@@ -160,6 +191,18 @@ class Point(Vector):
     """
 
     __slots__ = Vector.__slots__
+
+
+
+def multiplication_with_inverse(matrix: ndarray, matrix_to_inverse: ndarray, assume_a: str="gen") -> ndarray:
+    """
+    Returns matrix @ inverse(matrix_to_inverse)
+
+    assume_a accepts the same options as scipy.solve
+    """
+    zT = solve(matrix_to_inverse.T, matrix.T, assume_a=assume_a)
+    return zT.T
+
 
 
 
@@ -178,7 +221,7 @@ class Function:
 
     __slots__ = ("_wrapped", "_dimensions", "_evaluations", "_name", "_cost", "_doc")
 
-    _CACHE_SIZE = 32
+    _CACHE_SIZE = 1024
 
     def __init__(self, pyfunc: Callable, cost_per_call: int = 1, name: Optional[str] = None) -> None:
         self._init_fields_using(pyfunc)
@@ -218,8 +261,8 @@ class Function:
         return self._dimensions
 
     @domain_dimensions.setter
-    def domain_dimensions(self, number: int) -> None:
-       self._dimensions = number
+    def domain_dimensions(self, new_dimension: int) -> None:
+       self._dimensions = new_dimension
 
     @property
     def evaluations(self) -> int:
@@ -246,8 +289,7 @@ class Function:
         self._evaluations += self._cost
         return result_when_call_succeeds
 
-    def _cache_info(self):
-        return self._compute.cache_info()
+    _cache_info = _compute.cache_info
 
     def __call__(self, point: Vector) -> Any:
         """
