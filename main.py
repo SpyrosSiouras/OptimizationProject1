@@ -2,6 +2,7 @@ from dataset import Data
 from problem_functions import *
 import config
 from line_search import line_search_wolf_conditions
+from solution import Solution
 
 np.set_printoptions(precision=15)
 
@@ -79,7 +80,7 @@ def line_search_optimization(y,t, x_inputs,max_iterations, accuracy, method ):
 
 def run_simulation(method: str, data_points: list, train_data,t):
 
-    function_values = []
+    solutions = []
 
     for i in range(len(data_points)):
 
@@ -90,11 +91,13 @@ def run_simulation(method: str, data_points: list, train_data,t):
 
         print(f"Minimizer = {x_opt} with min value: {sol} in {config.function_calls} function calls! ")
         
-        data.plot_data(train_data,method,Pm(t,x_opt))
-        function_values.append(sol)
+        data.save_plot(train_data,method,i,Pm(t,x_opt), sol)
+        solutions.append(Solution(sol, x_opt))
         config.function_calls = 0
     
-    function_values.sort()
+    solutions.sort(key= lambda x: x.function_value)
+
+    return solutions
 
 
 
@@ -113,10 +116,11 @@ if __name__ == "__main__":
 
 
     t = create_polynomial_matrix(len(train_data), nth_power=4)
+    
+    for algorithm in line_search_algorithms:
+        solutions = run_simulation(algorithm, data_points, train_data, t)
 
-    run_simulation(line_search_algorithms[1], data_points, train_data, t)
-    # x_inputs = [data_points[5]]
-
+        
     # # x_inputs = [np.array([[ 1.276516314339567e-05],
     # #                     [ 1.413268420360388e-04],
     # #                     [ 1.283290949325388e-03],
@@ -124,17 +128,20 @@ if __name__ == "__main__":
     # #                     [ 1.022544616397106e-05]])]
 
 
-    # xs = bfgs(train_data,t, x_inputs, MAX_ITERATIONS, ACCURACY)
+    ####################TESTING
+    # x_inputs = [data_points[5]]
+
+    # xs = line_search_optimization(train_data,t, x_inputs, config.MAX_ITERATIONS, config.ACCURACY, method="Newton")
     # x_opt = xs[-1]
     # sol = objective_function(train_data, Pm(t,x_opt))
 
     # print(f"Minimizer = {x_opt} with min value: {sol} in {config.function_calls} function calls! ")
     # print(f"start point: {xs[0]}")
 
-    # data.plot_data(train_data,Pm(t,x_opt))
+    # # data.plot_data(train_data,Pm(t,x_opt))
 
-    # t = create_polynomial_matrix(30, 4)
+    # t = create_polynomial_matrix(5, 4)
 
-    # data.plot_data(transformed_data, polynomial_function = Pm(t,x_opt))
+    # data.plot_data(test_data, "Newton",polynomial_function = Pm(t,x_opt))
 
 
