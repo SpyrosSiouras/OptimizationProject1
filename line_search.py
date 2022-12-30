@@ -66,3 +66,53 @@ def zoom(a_low, a_high, y, t, fx, gfx, x,p, c1, c2):
             a_low = a
         
     return a
+
+
+def line_search_optimization(y,t, x_inputs,max_iterations, accuracy, method ):
+
+    H = None
+
+    if method == "BFGS": 
+        H = np.eye(5)  # initial hessian
+    else:
+        H = hessian(y, 5)
+    
+    # print(f"Hessian of objective function is always positive definite: {is_pos_def(H)}")
+    # _ = input("Press enter to continue! ")
+
+    Pm_x = Pm(t, x_inputs[-1])
+    gf = gradient(y, Pm_x,t)
+
+    while (np.linalg.norm(gf) > accuracy):
+
+        if config.function_calls > max_iterations:
+            # print(f"Couldn't reach desired accuracy ({np.linalg.norm(gradient(y, Pm(t, x_inputs[-1]), t))} >  {accuracy})!")
+            break
+
+        x = x_inputs[-1]
+        Pm_x = Pm(t, x)
+        gf = gradient(y, Pm_x,t)
+        fx = objective_function(y, Pm_x)
+
+        if method == "Steepest-Descent": 
+            pk = -gf 
+            lr = line_search_wolf_conditions(t, fx, x, y, pk, a0 = 0)
+        elif method == "Newton":
+            pk = -np.linalg.inv(H) @ gf 
+            lr = line_search_wolf_conditions(t, fx, x, y, pk, a0 = 0.0005)
+        elif method == "BFGS":
+            pk = -H @ gf
+            lr = line_search_wolf_conditions(t, fx, x, y, pk, a0 = 0.01)
+
+        else:
+            print("Didn't choose correct method! Try again with valid input!")
+            exit(-1)
+
+        x_new = x + lr * pk
+        if method == "BFGS":
+            H = calc_new_H(y, t, gf, lr, pk, x_new, H)
+
+
+        x_inputs.append(x_new)
+
+    return x_inputs

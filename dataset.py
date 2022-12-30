@@ -55,19 +55,19 @@ class Data:
         plt.show()
         
     
-    def save_plot(self, data, method, n_plot, polynomial_function, objective_function_value):
+    def save_plot(self, data, method, n_plot, polynomial_function, objective_function_value, start_x):
         
         plt.clf()
     
         N = len(data)
         
         plt.scatter(np.arange(1, N + 1, 1), data[:N], label = 'data')
-        if polynomial_function is not None:
-            plt.plot(np.arange(1, N + 1, 1), polynomial_function, color = 'red', label = 'fitted curve')
-            plt.title(f"{method}")
-        if n_plot:
-            plt.title(f"{method} {n_plot}: f(x) = {objective_function_value}")
-            plt.legend()
-            plt.savefig(f"Plots/{method}/{method + str(n_plot)}")
-
-            plt.figure().clear()
+        plt.plot(np.arange(1, N + 1, 1), polynomial_function, color = 'red', label = 'fitted curve')
+        
+        plt.title(f"{method}")
+        plt.title(f"{method} {n_plot}: f(x) = {objective_function_value}\n Starting point: {tuple(start_x)}")
+        plt.legend()
+        
+        plt.savefig(f"Plots/{method}/{method + str(n_plot)}")
+        plt.figure().clear()
+        plt.close()

@@ -59,3 +59,19 @@ def is_pos_def(A):
             return False
     else:
         return False
+
+def calc_new_H(y, t, gf, lr, pk, x_new, H):
+    
+    s = lr * pk
+    gf_new = gradient(y, Pm(t, x_new),t)
+    y_h = gf_new - gf
+    y_h = np.array([y_h])
+    s = np.array([s])
+    y_h = np.reshape(y_h, (5, 1))
+    s = np.reshape(s, (5, 1))
+    r = 1/(y_h.T@s)
+    li = (np.eye(5)-(r*((s@(y_h.T)))))
+    ri = (np.eye(5)-(r*((y_h@(s.T)))))
+    hess_inter = li@H@ri
+    
+    return hess_inter + (r*((s@(s.T))))
