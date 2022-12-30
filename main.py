@@ -92,13 +92,23 @@ def run_simulation(method: str, data_points: list, train_data,t):
         print(f"Minimizer = {x_opt} with min value: {sol} in {config.function_calls} function calls! ")
         
         data.save_plot(train_data,method,i,Pm(t,x_opt), sol)
-        solutions.append(Solution(sol, x_opt))
+        solutions.append(Solution(sol, x_opt, config.function_calls))
         config.function_calls = 0
     
     solutions.sort(key= lambda x: x.function_value)
 
     return solutions
 
+
+def calculate_statistics(sorted_list_of_numbers: list):
+
+    min = sorted_list_of_numbers[0]
+    max = sorted_list_of_numbers[-1]
+    mean = sum([x for x in sorted_list_of_numbers]) / len(sorted_list_of_numbers)
+    std = (1/len(sorted_list_of_numbers) * sum([(x - mean)**2 for x in sorted_list_of_numbers]))**0.5
+
+
+    return min, max, mean, std
 
 
 if __name__ == "__main__":
@@ -119,8 +129,27 @@ if __name__ == "__main__":
     
     for algorithm in line_search_algorithms:
         solutions = run_simulation(algorithm, data_points, train_data, t)
+        # mean = sum([x.function_value for x in solutions]) / len(solutions)
+        # min = solutions[0].function_value
+        # max = solutions[-1].function_value
+        # std = (1/len(solutions) * sum([(x.function_value - mean)**2 for x in solutions]))**0.5
+        function_calls = sorted([x.function_calls for x in solutions])
+        function_values = [x.function_value for x in solutions]
+        minfc, maxfc, meanfc, stdfc = calculate_statistics(function_calls)
+        minfv, maxfv, meanfv, stdfv = calculate_statistics(function_values)
+        print("FUNCTION CALLS STATS")
+        print(f"Mean: {meanfc}")
+        print(f"Min: {minfc}")
+        print(f"Max: {maxfc}")
+        print(f"Std: {stdfc}")
+        print("FUNCTION VALUE STATS")
+        print(f"Mean: {meanfv}")
+        print(f"Min: {minfv}")
+        print(f"Max: {maxfv}")
+        print(f"Std: {stdfv}")
+        _ = input("Press enter to continue! ")
 
-        
+
     # # x_inputs = [np.array([[ 1.276516314339567e-05],
     # #                     [ 1.413268420360388e-04],
     # #                     [ 1.283290949325388e-03],
