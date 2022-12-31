@@ -14,7 +14,7 @@ def line_search_wolf_conditions(t,fx ,x,y, p, a0):
     fx_new = objective_function(y, Pm_new)
     armijo_condition = ( fx_new > fx + c1*a*gfx)
     second_armijo_condition = ( fx_new >= fx and count > 1) 
-    while count < 200:
+    while count < 20:
 
         if armijo_condition or second_armijo_condition:
             a = zoom(a0, a, y, t, fx, gfx, x, p, c1, c2)
@@ -43,7 +43,7 @@ def line_search_wolf_conditions(t,fx ,x,y, p, a0):
 
 def zoom(a_low, a_high, y, t, fx, gfx, x,p, c1, c2):
 
-    for _ in range(100): 
+    for _ in range(40): 
 
         a = (a_low + a_high) / 2
         Pm_n = Pm(t, x + a * p)
@@ -73,7 +73,9 @@ def line_search_optimization(y,t, x_inputs,max_iterations, accuracy, method ):
     H = None
 
     if method == "BFGS": 
-        H = np.eye(5)  # initial hessian
+        # H = np.eye(5)  # initial hessian
+        H = hessian(y, 5)
+
     else:
         H = hessian(y, 5)
     
@@ -99,10 +101,10 @@ def line_search_optimization(y,t, x_inputs,max_iterations, accuracy, method ):
             lr = line_search_wolf_conditions(t, fx, x, y, pk, a0 = 0)
         elif method == "Newton":
             pk = -np.linalg.inv(H) @ gf 
-            lr = line_search_wolf_conditions(t, fx, x, y, pk, a0 = 0.0005)
+            lr = line_search_wolf_conditions(t, fx, x, y, pk, a0 = 1)
         elif method == "BFGS":
             pk = -H @ gf
-            lr = line_search_wolf_conditions(t, fx, x, y, pk, a0 = 0.01)
+            lr = line_search_wolf_conditions(t, fx, x, y, pk, a0 = 1)
 
         else:
             print("Didn't choose correct method! Try again with valid input!")

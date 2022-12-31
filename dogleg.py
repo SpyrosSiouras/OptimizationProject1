@@ -138,7 +138,7 @@ def doglegBFGS(y, t, x_inputs, max_iterations, accuracy, max_radius=1):
 
         region_radius = new_radius(pk,improvement_rate, region_radius, max_radius)
 
-        if improvement_rate > 0.2:
+        if improvement_rate > 0.001:
             x_inputs.append(x_cand)
             x = x_cand
             Pm_x = Pm_x_cand

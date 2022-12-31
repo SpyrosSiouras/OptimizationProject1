@@ -53,9 +53,10 @@ class Data:
         plt.title(method)
         plt.legend()
         plt.show()
+        plt.close()
         
     
-    def save_plot(self, data, method, n_plot, polynomial_function, objective_function_value, start_x):
+    def save_plot(self, data, method, n_plot, polynomial_function, objective_function_value, start_x, test_data = None, Pm_test = None,test_data_error = None):
         
         plt.clf()
     
@@ -63,11 +64,24 @@ class Data:
         
         plt.scatter(np.arange(1, N + 1, 1), data[:N], label = 'data')
         plt.plot(np.arange(1, N + 1, 1), polynomial_function, color = 'red', label = 'fitted curve')
+
+        if test_data_error:
+            plt.plot(np.arange(1, len(test_data) + 1, 1), Pm_test, color = 'green', label = "prediction")
+            plt.plot(np.arange(1, N + 1, 1), polynomial_function, color = 'red')
+            plt.scatter(np.arange(1, len(test_data) + 1, 1), test_data,color = 'maroon', label = 'test data')
+            plt.scatter(np.arange(1, N + 1, 1), data[:N], color = '#1f77b4')
+
+            plt.title(f"Optimal {method} solution: \n MSE of prediction = {test_data_error}")
         
-        plt.title(f"{method}")
-        plt.title(f"{method} {n_plot}: f(x) = {objective_function_value}\n Starting point: {tuple(start_x)}")
+        else:
+            plt.title(f"{method} {n_plot}: f(x) = {objective_function_value}\n Starting point: {tuple(start_x)}")
+
         plt.legend()
         
-        plt.savefig(f"Plots/{method}/{method + str(n_plot)}")
+        if test_data_error:
+            plt.savefig(f"Plots/{method}/{method}-Prediction")
+        else:
+            plt.savefig(f"Plots/{method}/{method + str(n_plot)}")
+
         plt.figure().clear()
         plt.close()

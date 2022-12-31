@@ -8,5 +8,6 @@ START_POINTS: Number of random initial points for comparison of algorithms
 function_calls = 0
 FILE_PATH = 'Government_Securities_GR.txt'
 MAX_ITERATIONS = 3000
-ACCURACY = 1.0e-4
-START_POINTS = 30
+ACCURACY = 1.0e-8
+N_START_POINTS = 30
+TRAIN_DATA_LENGTH = 25
