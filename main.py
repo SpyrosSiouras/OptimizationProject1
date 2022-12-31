@@ -65,6 +65,8 @@ if __name__ == "__main__":
 
 
     t = create_polynomial_matrix(len(train_data), nth_power=4)
+
+    t_test = create_polynomial_matrix(len(test_data), nth_power=4)
     
     for algorithm in optimization_algorithms:
         print("Running...")
@@ -86,7 +88,23 @@ if __name__ == "__main__":
         print(f"Std: \t  {stdfc}   \t {stdfv}")
         print("")
 
+
+        error_values = []
+        for solution in solutions:
+            error_values.append(objective_function(test_data, Pm(t_test, np.array(solution.x_opt))))
+        
+        error_values = sorted(error_values)
+        min_pred, max_pred, mean_pred, std_pred = calculate_statistics(error_values)
+
+        print(f"\tPrediction stats")
+
+        print(f"{min_pred=}")
+        print(f"{max_pred=}")
+        print(f"{mean_pred=}")
+        print(f"{std_pred=}")
+
         _ = input("\nPress enter to continue! ")
+
 
 
 
